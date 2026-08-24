@@ -667,7 +667,7 @@
             <h2>API Quick Reference</h2>
             <div class="doc-section">
               <h3>Authentication</h3>
-              <p>Direct calls to the usage API use <code>Authorization: Bearer &lt;CUSTOMER_API_KEY&gt;</code>. This dashboard keeps that key in the site's environment variables: the browser calls <code>/api/*</code> here and a server-side proxy attaches the key and forwards to the API, so every load is a fresh authenticated request and the key never reaches the browser. Access to this page is access to the data, so keep the URL private or add Netlify site protection.</p>
+              <p>Direct calls to the usage API use <code>Authorization: Bearer &lt;CUSTOMER_API_KEY&gt;</code>. This dashboard keeps that key in the site's environment variables: the browser calls <code>/api/*</code> here and a server-side proxy attaches the key and forwards to the API, so every load is a fresh authenticated request and the key never reaches the browser. Access to this page is access to the data, so keep the URL private or add Netlify site protection. For the API URL, a new key, or a key rotation, contact your Netlify Account Executive or the Customer Success team.</p>
             </div>
             <div class="doc-section">
               <h3>GET /v1/usage?start=YYYY-MM-DD&amp;end=YYYY-MM-DD&amp;granularity=month|day</h3>

@@ -15,6 +15,8 @@ data. This repo gives you two things:
 
 You need two values from Netlify to use either: your **API base URL** (an opaque
 `https://xxxx.netlify.app` address) and your **`CUSTOMER_API_KEY`** (a bearer token).
+Contact your Netlify **Account Executive** or the **Customer Success team** to get
+these values, rotate a key, or add one.
 
 ---
 
@@ -308,7 +310,8 @@ clones the repo into your own Git account, prompts you for the two values this a
   Netlify gave you
 - `CUSTOMER_API_KEY`: the API key you were issued
 
-Then open the site, pick a range, and click **Load Data**.
+Don't have these values? Contact your Netlify Account Executive or the Customer Success
+team. Then open the site, pick a range, and click **Load Data**.
 
 **Or manually.** Push this repo to your Git provider and create a Netlify site from it
 (or run `netlify deploy --prod` with the [Netlify CLI](https://docs.netlify.com/cli/get-started/)).
