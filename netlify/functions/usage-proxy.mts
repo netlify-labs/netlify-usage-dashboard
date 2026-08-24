@@ -1,13 +1,15 @@
 /**
- * Same-origin relay to the Netlify Usage API.
+ * Server-side proxy to the Netlify Usage API.
  *
- * Why this exists: the upstream usage API sends no CORS headers, so a browser page cannot
- * call it directly. This function forwards the request to the upstream, nothing more.
+ * Both halves of the upstream credential live in this site's environment: USAGE_API_URL
+ * (where to call) and CUSTOMER_API_KEY (the bearer token, attached here so it never
+ * reaches the browser). Every dashboard load is a fresh upstream API request made with
+ * that key; nothing is cached or stored. The proxy is also unavoidable for a browser
+ * client because the upstream sends no CORS headers.
  *
- * It holds NO secrets. The viewer enters the CUSTOMER_API_KEY in the dashboard and every
- * request carries it as a bearer token; this relay passes that token through verbatim and
- * the upstream does the authentication (timing-safe, server-side). No key, no data:
- * exactly the upstream's own security model, unchanged.
+ * NOTE: with the key attached server-side, anyone who can reach this site can read the
+ * data. Restrict the audience with Netlify site protection (password / team access) if
+ * the dashboard URL is not treated as private.
  *
  * Routes (all read-only):
  *   GET /api/health      -> upstream GET /v1/health
@@ -46,12 +48,10 @@ export default async (request: Request, _context: Context): Promise<Response> =>
   if (!route) return json(404, { error: { status: 404, message: 'Not found' } });
 
   const base = (process.env.USAGE_API_URL ?? '').replace(/\/+$/, '');
-  if (!base) return json(500, { error: { status: 500, message: 'Relay is not configured (USAGE_API_URL)' } });
-
-  // Fail fast with a hint the dashboard can act on, rather than round-tripping a bare 401.
-  const auth = request.headers.get('authorization');
-  if (!auth && url.pathname !== '/api/health') {
-    return json(401, { error: { status: 401, message: 'Unauthorized', code: 'api_key_required' } });
+  // The upstream accepts any key in its comma-separated set; send the first configured one.
+  const key = (process.env.CUSTOMER_API_KEY ?? '').split(',')[0]?.trim() ?? '';
+  if (!base || (!key && url.pathname !== '/api/health')) {
+    return json(500, { error: { status: 500, message: 'Proxy is not configured (USAGE_API_URL / CUSTOMER_API_KEY)' } });
   }
 
   const upstream = new URL(base + route.upstream);
@@ -63,7 +63,7 @@ export default async (request: Request, _context: Context): Promise<Response> =>
   let res: Response;
   try {
     res = await fetch(upstream, {
-      headers: auth ? { authorization: auth } : {},
+      headers: key ? { authorization: `Bearer ${key}` } : {},
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
   } catch (e) {

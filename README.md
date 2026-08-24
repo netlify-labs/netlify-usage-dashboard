@@ -4,9 +4,10 @@ A self-hostable dashboard and API guide for your **Netlify Usage API**, the priv
 read-only service Netlify runs for you that serves your organization's usage and billing
 data. This repo gives you two things:
 
-1. **A dashboard** (charts, tables, CSV export) you deploy as a Netlify site. You enter
-   your API key in the page; every load is a fresh, key-authenticated API request. The
-   site stores no data and no credentials.
+1. **A dashboard** (charts, tables, CSV export) you deploy as a Netlify site. The API
+   base URL and your API key live in the site's environment variables; every page load
+   makes fresh, key-authenticated API requests server-side. Nothing is cached and the
+   key never reaches the browser.
 2. **This README**, a complete guide to calling the API directly from your own scripts,
    BI tools, or finance pipelines.
 
@@ -24,8 +25,8 @@ You need two values from Netlify to use either: your **API base URL** (an opaque
   (month x host x country x product feature, with credits and dollars).
 - Always read `meta.coverage` and `meta.warnings` before trusting numbers: the response
   tells you which part came from live sources vs stored snapshots, and what degraded.
-- To run the dashboard: deploy this repo to Netlify, set `USAGE_API_URL` as an
-  environment variable, open the site, and enter your API key. Done.
+- To run the dashboard: deploy this repo to Netlify and set two environment variables,
+  `USAGE_API_URL` and `CUSTOMER_API_KEY`. Done.
 
 ---
 
@@ -279,34 +280,32 @@ sites, geo split), and tabbed tables for every section of `/v1/usage`, plus an A
 tab with the reconciliation and a CSV download. A freshness strip surfaces
 `meta.coverage` and `meta.warnings` on every load, and a JSON tab shows the raw response.
 
-### How authentication works (and why there is a relay)
+### How authentication works (and why there is a proxy)
 
-The dashboard uses the API's own security model, nothing extra. You enter your
-`CUSTOMER_API_KEY` in the page; the browser sends it as a bearer token with every
-request, and the usage API authenticates it. No key, no data. The key is kept in your
-browser's session storage only (cleared when the tab closes) and is never stored on the
-dashboard site, so the site needs no access control of its own: it is a static page that
-anyone can load but nobody can get data out of without the key.
+Both halves of the credential are environment variables on the dashboard site:
+`USAGE_API_URL` (where to call) and `CUSTOMER_API_KEY` (the bearer token). The browser
+calls `/api/usage`, `/api/allocation`, and `/api/health` on this site; one serverless
+function (`netlify/functions/usage-proxy.mts`) attaches the key server-side, forwards
+only the allowlisted query parameters, and streams the response back. Every dashboard
+load is a fresh authenticated API request; nothing is cached or stored, and the key
+never ships to a browser. The proxy is also what makes a browser client possible at all,
+since the usage API sends no CORS headers. It is read-only, GET-only.
 
-The only reason requests do not go straight to the API is CORS: the usage API
-intentionally sends no CORS headers, so browsers refuse cross-origin calls to it. One
-serverless function (`netlify/functions/usage-proxy.mts`) relays `/api/usage`,
-`/api/allocation`, and `/api/health` same-origin, passing your bearer token through
-verbatim and forwarding only the allowlisted query parameters. It holds no secrets and is
-read-only, GET-only.
+The flip side of holding the key server-side: **anyone who can reach the dashboard URL
+can read the data.** Treat the URL as private, and if it will be shared beyond the people
+who should see usage data, put Netlify site protection (password or team-member access)
+in front.
 
 ### Deploy (about 5 minutes)
 
 1. Push this repo to your Git provider and create a new Netlify site from it (or run
    `netlify deploy --prod` from the repo with the [Netlify CLI](https://docs.netlify.com/cli/get-started/)).
    No build step: it publishes `public/` and deploys the one function.
-2. In the site's **Environment variables**, set `USAGE_API_URL` to your API base URL,
-   e.g. `https://insights-xxxx.netlify.app` (see `.env.example`).
-3. Redeploy so the variable takes effect, then open the site, enter your API key, pick a
-   range, and click **Load Data**.
-
-If you also want to control who can *reach* the page (not just who can read data), add
-Netlify site protection (password or team-member access) on top.
+2. In the site's **Environment variables**, set (see `.env.example`):
+   - `USAGE_API_URL`: your API base URL, e.g. `https://insights-xxxx.netlify.app`
+   - `CUSTOMER_API_KEY`: your API key (mark it as a secret)
+3. Redeploy so the variables take effect, then open the site, pick a range, and click
+   **Load Data**.
 
 ### Local development
 
@@ -320,9 +319,9 @@ npx netlify dev        # serves the page + proxy at http://localhost:8888
 
 ```
 public/index.html                    the dashboard (single file, Chart.js from CDN)
-netlify/functions/usage-proxy.mts    same-origin relay to the API (holds no secrets)
+netlify/functions/usage-proxy.mts    server-side proxy holding CUSTOMER_API_KEY
 netlify.toml                         publish dir, function dir, security headers
-.env.example                         the one environment variable you set
+.env.example                         the two environment variables you set
 ```
 
 ---

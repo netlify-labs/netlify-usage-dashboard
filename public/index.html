@@ -340,7 +340,6 @@
           <option value="month" selected>Month</option>
           <option value="day">Day</option>
         </select>
-        <input type="password" id="access-key" placeholder="Your API key" autocomplete="off" style="min-width:220px" />
         <button id="load-btn">Load Data</button>
         <span class="api-link">API: <a href="#" id="api-href" target="_blank" rel="noopener">/api/usage</a></span>
       </div>
@@ -672,7 +671,7 @@
             <h2>API Quick Reference</h2>
             <div class="doc-section">
               <h3>Authentication</h3>
-              <p>Every call uses <code>Authorization: Bearer &lt;CUSTOMER_API_KEY&gt;</code>. Enter your key in the field above; the browser sends it with each request through this site's <code>/api/*</code> relay (needed only because the API sends no CORS headers), and the API itself authenticates it. Nothing is stored server-side; the key is kept in your browser session only, and every dashboard load is a fresh authenticated API request.</p>
+              <p>Direct calls to the usage API use <code>Authorization: Bearer &lt;CUSTOMER_API_KEY&gt;</code>. This dashboard keeps that key in the site's environment variables: the browser calls <code>/api/*</code> here and a server-side proxy attaches the key and forwards to the API, so every load is a fresh authenticated request and the key never reaches the browser. Access to this page is access to the data, so keep the URL private or add Netlify site protection.</p>
             </div>
             <div class="doc-section">
               <h3>GET /v1/usage?start=YYYY-MM-DD&amp;end=YYYY-MM-DD&amp;granularity=month|day</h3>
@@ -755,19 +754,16 @@
       });
 
       // ---- fetch ----------------------------------------------------------------------
-      function authHeaders() {
-        const key = $('access-key').value.trim() || sessionStorage.getItem('api_key') || '';
-        return key ? { authorization: `Bearer ${key}` } : {};
-      }
-
+      // Auth is server-side: the site's proxy attaches the API key from its environment,
+      // so every load here is a fresh authenticated request with nothing entered or stored.
       async function apiFetch(path) {
-        const res = await fetch(path, { headers: authHeaders() });
+        const res = await fetch(path);
         if (!res.ok) {
           let message = `HTTP ${res.status}`;
           try {
             const body = await res.json();
             if (res.status === 401) {
-              message = 'Unauthorized. Enter your API key in the field above and click Load Data.';
+              message = 'The upstream API rejected the key. Check CUSTOMER_API_KEY in this site\'s environment variables.';
             } else if (body?.error?.message) {
               message = `${message}: ${body.error.message}` + (body.error.details ? ` (${JSON.stringify(body.error.details)})` : '');
             } else if (body?.status === 'unavailable') {
@@ -787,9 +783,6 @@
         const granularity = $('granularity').value;
         const qs = `start=${range.start}&end=${range.end}&granularity=${granularity}`;
         $('api-href').href = `/api/usage?${qs}`;
-
-        const key = $('access-key').value.trim();
-        if (key) sessionStorage.setItem('api_key', key);
 
         $('status').style.display = 'flex';
         $('status').className = 'status loading';
@@ -1068,7 +1061,6 @@
       $('load-btn').addEventListener('click', loadData);
       $('allocation-load').addEventListener('click', loadAllocation);
       $('allocation-csv').addEventListener('click', downloadCsv);
-      $('access-key').value = sessionStorage.getItem('api_key') ?? '';
 
       loadData();
     </script>
