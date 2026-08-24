@@ -1,22 +1,20 @@
 /**
- * Server-side proxy to the Netlify Usage API.
+ * Same-origin relay to the Netlify Usage API.
  *
- * Why this exists: the upstream usage API is bearer-authed with CUSTOMER_API_KEY and sends
- * no CORS headers, so a browser cannot (and should not) call it directly. The key stays in
- * this function's environment and never reaches the client.
+ * Why this exists: the upstream usage API sends no CORS headers, so a browser page cannot
+ * call it directly. This function forwards the request to the upstream, nothing more.
+ *
+ * It holds NO secrets. The viewer enters the CUSTOMER_API_KEY in the dashboard and every
+ * request carries it as a bearer token; this relay passes that token through verbatim and
+ * the upstream does the authentication (timing-safe, server-side). No key, no data:
+ * exactly the upstream's own security model, unchanged.
  *
  * Routes (all read-only):
  *   GET /api/health      -> upstream GET /v1/health
  *   GET /api/usage       -> upstream GET /v1/usage       (start, end, granularity)
  *   GET /api/allocation  -> upstream GET /v1/allocation  (start, end, format)
- *
- * Optional second lock: set DASHBOARD_ACCESS_KEY and every request here must carry
- * Authorization: Bearer <key>. Comparison is timing-safe. Comma-separate to keep more than
- * one key active during rotation. Leave it unset only if the dashboard site itself is
- * access-controlled some other way (Netlify password protection, private network).
  */
 import type { Config, Context } from '@netlify/functions';
-import { timingSafeEqual } from 'node:crypto';
 
 const UPSTREAM_TIMEOUT_MS = 25_000;
 
@@ -40,27 +38,6 @@ const json = (status: number, body: unknown): Response =>
     headers: { 'Content-Type': 'application/json; charset=utf-8', ...NO_STORE },
   });
 
-/** Timing-safe membership test against a comma-separated key set. */
-function keyMatches(candidate: string | null, configured: string): boolean {
-  if (!candidate) return false;
-  const cand = Buffer.from(candidate, 'utf8');
-  let ok = false;
-  for (const part of configured.split(',')) {
-    const key = Buffer.from(part.trim(), 'utf8');
-    if (key.length === 0) continue;
-    // Compare against a same-length buffer so length never short-circuits the comparison.
-    if (key.length === cand.length && timingSafeEqual(key, cand)) ok = true;
-  }
-  return ok;
-}
-
-function bearerFrom(request: Request): string | null {
-  const raw = request.headers.get('authorization');
-  if (!raw) return null;
-  const m = /^Bearer\s+(.+)$/i.exec(raw.trim());
-  return m ? m[1] : null;
-}
-
 export default async (request: Request, _context: Context): Promise<Response> => {
   if (request.method !== 'GET') return json(405, { error: { status: 405, message: 'Method not allowed' } });
 
@@ -68,19 +45,14 @@ export default async (request: Request, _context: Context): Promise<Response> =>
   const route = ROUTES[url.pathname];
   if (!route) return json(404, { error: { status: 404, message: 'Not found' } });
 
-  // Optional dashboard-level auth (recommended). Health stays open as a liveness probe.
-  const accessKeys = process.env.DASHBOARD_ACCESS_KEY ?? '';
-  if (accessKeys && url.pathname !== '/api/health' && !keyMatches(bearerFrom(request), accessKeys)) {
-    return json(401, { error: { status: 401, message: 'Unauthorized', code: 'dashboard_key_required' } });
-  }
-
   const base = (process.env.USAGE_API_URL ?? '').replace(/\/+$/, '');
-  const customerKeys = process.env.CUSTOMER_API_KEY ?? '';
-  if (!base || (!customerKeys && url.pathname !== '/api/health')) {
-    return json(500, { error: { status: 500, message: 'Proxy is not configured (USAGE_API_URL / CUSTOMER_API_KEY)' } });
+  if (!base) return json(500, { error: { status: 500, message: 'Relay is not configured (USAGE_API_URL)' } });
+
+  // Fail fast with a hint the dashboard can act on, rather than round-tripping a bare 401.
+  const auth = request.headers.get('authorization');
+  if (!auth && url.pathname !== '/api/health') {
+    return json(401, { error: { status: 401, message: 'Unauthorized', code: 'api_key_required' } });
   }
-  // The upstream accepts any key in its set; send the first configured one.
-  const customerKey = customerKeys.split(',')[0]?.trim() ?? '';
 
   const upstream = new URL(base + route.upstream);
   for (const p of route.params) {
@@ -91,7 +63,7 @@ export default async (request: Request, _context: Context): Promise<Response> =>
   let res: Response;
   try {
     res = await fetch(upstream, {
-      headers: customerKey ? { authorization: `Bearer ${customerKey}` } : {},
+      headers: auth ? { authorization: auth } : {},
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
   } catch (e) {
