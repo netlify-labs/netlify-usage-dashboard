@@ -1,5 +1,7 @@
 # Netlify Usage Dashboard
 
+[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/netlify-labs/netlify-usage-dashboard)
+
 A self-hostable dashboard and API guide for your **Netlify Usage API**, the private,
 read-only service Netlify runs for you that serves your organization's usage and billing
 data. This repo gives you two things:
@@ -25,8 +27,8 @@ You need two values from Netlify to use either: your **API base URL** (an opaque
   (month x host x country x product feature, with credits and dollars).
 - Always read `meta.coverage` and `meta.warnings` before trusting numbers: the response
   tells you which part came from live sources vs stored snapshots, and what degraded.
-- To run the dashboard: deploy this repo to Netlify and set two environment variables,
-  `USAGE_API_URL` and `CUSTOMER_API_KEY`. Done.
+- To run the dashboard: click **Deploy to Netlify** above and enter your API base URL
+  and API key when prompted. Done.
 
 ---
 
@@ -296,16 +298,23 @@ can read the data.** Treat the URL as private, and if it will be shared beyond t
 who should see usage data, put Netlify site protection (password or team-member access)
 in front.
 
-### Deploy (about 5 minutes)
+### Deploy (about 2 minutes)
 
-1. Push this repo to your Git provider and create a new Netlify site from it (or run
-   `netlify deploy --prod` from the repo with the [Netlify CLI](https://docs.netlify.com/cli/get-started/)).
-   No build step: it publishes `public/` and deploys the one function.
-2. In the site's **Environment variables**, set (see `.env.example`):
-   - `USAGE_API_URL`: your API base URL, e.g. `https://insights-xxxx.netlify.app`
-   - `CUSTOMER_API_KEY`: your API key (mark it as a secret)
-3. Redeploy so the variables take effect, then open the site, pick a range, and click
-   **Load Data**.
+**One click.** Use the **Deploy to Netlify** button at the top of this README. Netlify
+clones the repo into your own Git account, prompts you for the two values this app needs
+(they are declared in `netlify.toml` under `[template.environment]`), and deploys:
+
+- `USAGE_API_URL`: your API base URL, the opaque `https://....netlify.app` address
+  Netlify gave you
+- `CUSTOMER_API_KEY`: the API key you were issued
+
+Then open the site, pick a range, and click **Load Data**.
+
+**Or manually.** Push this repo to your Git provider and create a Netlify site from it
+(or run `netlify deploy --prod` with the [Netlify CLI](https://docs.netlify.com/cli/get-started/)).
+There is no build step: it publishes `public/` and deploys the one function. Set the same
+two environment variables on the site (see `.env.example`), marking `CUSTOMER_API_KEY`
+as a secret, and redeploy so they take effect.
 
 ### Local development
 

@@ -5,6 +5,13 @@
   publish = "public"
   functions = "netlify/functions"
 
+# Deploy-to-Netlify template config: when a site is created from the deploy button,
+# Netlify prompts the deployer for these values and sets them as the site's environment
+# variables. This is what makes the repo reusable per customer with no code changes.
+[template.environment]
+  USAGE_API_URL = "Base URL of your Netlify Usage API deployment (https://....netlify.app)"
+  CUSTOMER_API_KEY = "The API key (bearer token) you were issued for the usage API"
+
 [[headers]]
   for = "/*"
   [headers.values]
