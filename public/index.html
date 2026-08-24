@@ -1,0 +1,1076 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Netlify Usage Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+      :root {
+        --bg: #0e1e25;
+        --bg-card: #152830;
+        --border: #1e3a47;
+        --text: #e5f4f9;
+        --text-muted: #8ba3ad;
+        --accent: #05bdba;
+        --accent-hover: #04a8a5;
+        --danger: #ff4655;
+        --warn: #f2a20c;
+      }
+
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        padding: 24px;
+      }
+
+      .container { max-width: 1600px; margin: 0 auto; }
+
+      header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 24px;
+        padding-bottom: 24px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .logo { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; }
+      .logo svg { width: 44px; height: 44px; }
+
+      h1 { font-size: 24px; font-weight: 600; }
+      h2 { font-size: 18px; font-weight: 600; margin-bottom: 16px; color: var(--text); }
+
+      .subtitle { color: var(--text-muted); font-size: 14px; margin-top: 4px; }
+
+      .controls {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+      }
+
+      label { font-size: 14px; color: var(--text-muted); }
+
+      select, input {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 8px 12px;
+        color: var(--text);
+        font-size: 14px;
+        font-family: inherit;
+        color-scheme: dark;
+      }
+
+      select:focus, input:focus { outline: none; border-color: var(--accent); }
+
+      button {
+        background: var(--accent);
+        color: var(--bg);
+        border: none;
+        border-radius: 6px;
+        padding: 10px 20px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+
+      button:hover { background: var(--accent-hover); }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+      button.secondary { background: var(--bg-card); color: var(--text); border: 1px solid var(--border); }
+      button.secondary:hover { border-color: var(--accent); }
+
+      .card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 24px;
+      }
+
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
+      }
+
+      .summary-item {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 16px;
+      }
+
+      .summary-label {
+        font-size: 11px;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 8px;
+      }
+
+      .summary-value { font-size: 24px; font-weight: 700; color: var(--accent); }
+      .summary-unit { font-size: 12px; color: var(--text-muted); margin-left: 4px; }
+
+      /* Meta / coverage strip */
+      .meta-strip {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-bottom: 24px;
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      .chip {
+        display: inline-block;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 11px;
+        color: var(--text-muted);
+        font-family: 'Monaco', 'Menlo', monospace;
+      }
+      .chip.warn { border-color: var(--warn); color: var(--warn); }
+      .chip.ok { border-color: var(--accent); color: var(--accent); }
+
+      .json-output {
+        width: 100%;
+        min-height: 400px;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 16px;
+        color: var(--text);
+        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+        font-size: 12px;
+        line-height: 1.5;
+        resize: vertical;
+        white-space: pre;
+        overflow: auto;
+      }
+
+      .status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 16px;
+        border-radius: 8px;
+        font-size: 14px;
+        margin-bottom: 16px;
+      }
+      .status.loading { background: rgba(5, 189, 186, 0.1); border: 1px solid var(--accent); color: var(--accent); }
+      .status.error { background: rgba(255, 70, 85, 0.1); border: 1px solid var(--danger); color: var(--danger); }
+
+      .spinner {
+        width: 16px; height: 16px;
+        border: 2px solid transparent;
+        border-top-color: currentColor;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      .api-link { font-size: 13px; color: var(--text-muted); }
+      .api-link a { color: var(--accent); text-decoration: none; }
+      .api-link a:hover { text-decoration: underline; }
+
+      .table-container { overflow-x: auto; max-height: 520px; overflow-y: auto; }
+
+      .data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+      .data-table th, .data-table td {
+        padding: 8px 10px;
+        text-align: left;
+        border-bottom: 1px solid var(--border);
+        white-space: nowrap;
+      }
+      .data-table th {
+        background: var(--bg);
+        color: var(--text-muted);
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 10px;
+        letter-spacing: 0.5px;
+        position: sticky;
+        top: 0;
+        z-index: 1;
+      }
+      .data-table td { color: var(--text); }
+      .data-table tr:hover td { background: rgba(5, 189, 186, 0.05); }
+      .data-table .number { text-align: right; font-family: 'Monaco', 'Menlo', monospace; }
+
+      .tabs {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 16px;
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 8px;
+        flex-wrap: wrap;
+      }
+      .tab-btn {
+        background: transparent;
+        color: var(--text-muted);
+        padding: 6px 12px;
+        border-radius: 6px 6px 0 0;
+        font-weight: 500;
+        font-size: 13px;
+      }
+      .tab-btn.active { background: var(--accent); color: var(--bg); }
+      .tab-btn:hover:not(.active) { color: var(--text); background: transparent; }
+
+      .tab-content { display: none; }
+      .tab-content.active { display: block; }
+
+      .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+      @media (max-width: 1000px) { .grid-2 { grid-template-columns: 1fr; } }
+
+      .source-tag {
+        display: inline-block;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        color: var(--text-muted);
+        font-size: 10px;
+        font-weight: 500;
+        font-family: 'Monaco', 'Menlo', monospace;
+        padding: 2px 6px;
+        border-radius: 4px;
+        margin-left: 8px;
+        vertical-align: middle;
+      }
+      .row-count { font-size: 11px; color: var(--text-muted); margin-left: 8px; }
+      .section-note { font-size: 12px; color: var(--text-muted); margin-bottom: 12px; }
+
+      /* Docs */
+      .doc-section {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+      .doc-section h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; color: var(--accent); }
+      .doc-section p { font-size: 13px; margin-bottom: 8px; color: var(--text); }
+      .doc-section ul { font-size: 13px; margin: 0 0 8px 18px; color: var(--text); }
+      .doc-section li { margin-bottom: 4px; }
+      .doc-section code {
+        background: var(--bg-card);
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-family: 'Monaco', 'Menlo', monospace;
+        font-size: 11px;
+      }
+      .query-code {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 12px;
+        font-family: 'Monaco', 'Menlo', monospace;
+        font-size: 11px;
+        line-height: 1.5;
+        overflow-x: auto;
+        white-space: pre;
+        color: var(--text-muted);
+        margin-bottom: 8px;
+      }
+
+      /* Charts */
+      .chart-row { display: flex; gap: 24px; margin-bottom: 24px; }
+      .chart-row .chart-card { flex: 1; }
+      .chart-row .chart-card.wide { flex: 2; }
+      .chart-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; margin-bottom: 24px; }
+      @media (max-width: 1200px) {
+        .chart-grid { grid-template-columns: 1fr; }
+        .chart-row { flex-direction: column; }
+      }
+      .chart-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 20px;
+      }
+      .chart-card h3 { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 16px; }
+      .chart-container { position: relative; height: 280px; }
+      .chart-container.tall { height: 350px; }
+      .chart-container.short { height: 220px; }
+      .chart-stat { text-align: center; padding: 12px; background: var(--bg); border-radius: 8px; margin-bottom: 16px; }
+      .chart-stat-value { font-size: 28px; font-weight: 700; color: var(--accent); }
+      .chart-stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <div class="logo">
+          <!-- Netlify mark -->
+          <svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path fill="#05bdba" d="M28.589 14.135l-.014-.006c-.008-.003-.016-.006-.023-.013a.11.11 0 0 1-.028-.093l.773-4.726 3.625 3.626-3.77 1.604a.083.083 0 0 1-.033.006h-.015a.104.104 0 0 1-.02-.017 1.716 1.716 0 0 0-.495-.381zm5.258-.288l3.876 3.876c.805.806 1.208 1.208 1.355 1.674.022.069.04.138.054.209l-9.263-3.923a.728.728 0 0 0-.015-.006c-.037-.015-.08-.032-.08-.07 0-.038.044-.056.081-.071l.012-.005 3.98-1.684zm5.127 7.003c-.2.376-.59.766-1.25 1.427l-4.37 4.369-5.652-1.177-.03-.006c-.05-.008-.103-.017-.103-.062a1.706 1.706 0 0 0-.655-1.193c-.023-.023-.017-.059-.01-.092 0-.005 0-.01.002-.014l1.063-6.526.004-.022c.006-.05.015-.108.06-.108a1.73 1.73 0 0 0 1.16-.665c.009-.01.015-.021.027-.027.032-.015.07 0 .103.014l9.65 4.082zm-6.625 6.801l-7.186 7.186 1.23-7.56.002-.01a.128.128 0 0 1 .006-.029c.01-.024.036-.034.061-.044l.012-.005a1.85 1.85 0 0 0 .695-.517c.024-.028.053-.055.09-.06a.09.09 0 0 1 .029 0l5.06 1.04zm-8.707 8.707l-.81.81-8.955-12.942a.424.424 0 0 0-.01-.014c-.014-.019-.029-.038-.026-.06 0-.016.011-.03.022-.042l.01-.013c.027-.04.05-.08.075-.123l.02-.035.003-.003c.014-.024.027-.047.051-.06.021-.01.05-.006.073-.001l9.921 2.046a.164.164 0 0 1 .076.033c.013.013.016.027.019.043a1.757 1.757 0 0 0 1.028 1.175c.028.014.016.045.003.078a.238.238 0 0 0-.015.045c-.125.76-1.197 7.298-1.485 9.063zm-1.692 1.691c-.597.591-.949.904-1.347 1.03a2 2 0 0 1-1.206 0c-.466-.148-.869-.55-1.674-1.356L8.73 28.73l2.349-3.643c.011-.018.022-.034.04-.047.025-.018.061-.01.091 0a2.434 2.434 0 0 0 1.638-.083c.027-.01.054-.017.075.002a.19.19 0 0 1 .028.032l8.999 13.058zM7.863 27.863L5.8 25.8l4.074-1.738a.084.084 0 0 1 .033-.007c.034 0 .054.034.072.065a2.91 2.91 0 0 0 .13.184l.013.016c.012.017.004.034-.008.05l-2.25 3.493zm-2.976-2.976l-2.61-2.61c-.444-.444-.766-.766-.99-1.043l7.936 1.646a.84.84 0 0 0 .03.005c.049.008.103.017.103.063 0 .05-.059.073-.109.092l-.023.01-4.337 1.837zM.831 19.892a2 2 0 0 1 .09-.495c.148-.466.55-.868 1.356-1.674l3.34-3.34a2175.525 2175.525 0 0 0 4.626 6.687c.027.036.057.076.026.106-.146.161-.292.337-.395.528a.16.16 0 0 1-.05.062c-.013.008-.027.005-.042.002H9.78L.831 19.891zm5.68-6.403l4.491-4.491c.422.185 1.958.834 3.332 1.414 1.04.44 1.988.84 2.286.97.03.012.057.024.07.054.008.018.004.041 0 .06a2.003 2.003 0 0 0 .523 1.828c.03.03 0 .073-.026.11l-.014.021-4.56 7.063c-.012.02-.023.037-.043.05-.024.015-.058.008-.086.001a2.274 2.274 0 0 0-.543-.074c-.164 0-.342.03-.522.063h-.001c-.02.003-.038.007-.054-.005a.21.21 0 0 1-.045-.051l-4.808-7.013zm5.398-5.398l5.814-5.814c.805-.805 1.208-1.208 1.674-1.355a2 2 0 0 1 1.206 0c.466.147.869.55 1.674 1.355l1.26 1.26-4.135 6.404a.155.155 0 0 1-.041.048c-.025.017-.06.01-.09 0a2.097 2.097 0 0 0-1.92.37c-.027.028-.067.012-.101-.003-.54-.235-4.74-2.01-5.341-2.265zm12.506-3.676l3.818 3.818-.92 5.698v.015a.135.135 0 0 1-.008.038c-.01.02-.03.024-.05.03a1.83 1.83 0 0 0-.548.273.154.154 0 0 0-.02.017c-.011.012-.022.023-.04.025a.114.114 0 0 1-.043-.007l-5.818-2.472-.011-.005c-.037-.015-.081-.033-.081-.071a2.198 2.198 0 0 0-.31-.915c-.028-.046-.059-.094-.035-.141l4.066-6.303zm-3.932 8.606l5.454 2.31c.03.014.063.027.076.058a.106.106 0 0 1 0 .057c-.016.08-.03.171-.03.263v.153c0 .038-.039.054-.075.069l-.011.004c-.864.369-12.13 5.173-12.147 5.173-.017 0-.035 0-.052-.017-.03-.03 0-.072.027-.11a.76.76 0 0 0 .014-.02l4.482-6.94.008-.012c.026-.042.056-.089.104-.089l.045.007c.102.014.192.027.283.027.68 0 1.31-.331 1.69-.897a.16.16 0 0 1 .034-.04c.027-.02.067-.01.098.004zm-6.246 9.185l12.28-5.237s.018 0 .035.017c.067.067.124.112.179.154l.027.017c.025.014.05.03.052.056 0 .01 0 .016-.002.025L25.756 23.7l-.004.026c-.007.05-.014.107-.061.107a1.729 1.729 0 0 0-1.373.847l-.005.008c-.014.023-.027.045-.05.057-.021.01-.048.006-.07.001l-9.793-2.02c-.01-.002-.152-.519-.163-.52z"/>
+          </svg>
+        </div>
+        <div>
+          <h1>Netlify Usage Dashboard</h1>
+          <p class="subtitle">Bandwidth, requests, functions, members, credits and cost allocation for your Netlify accounts</p>
+        </div>
+      </header>
+
+      <div class="controls">
+        <label for="preset">Range:</label>
+        <select id="preset">
+          <option value="3">Last 3 months</option>
+          <option value="6" selected>Last 6 months</option>
+          <option value="12">Last 12 months</option>
+          <option value="ytd">Year to date</option>
+          <option value="custom">Custom</option>
+        </select>
+        <input type="date" id="start" title="Start date (inclusive)" style="display:none" />
+        <input type="date" id="end" title="End date (exclusive)" style="display:none" />
+        <label for="granularity">Granularity:</label>
+        <select id="granularity">
+          <option value="month" selected>Month</option>
+          <option value="day">Day</option>
+        </select>
+        <input type="password" id="access-key" placeholder="Dashboard access key" autocomplete="off" />
+        <button id="load-btn">Load Data</button>
+        <span class="api-link">API: <a href="#" id="api-href" target="_blank" rel="noopener">/api/usage</a></span>
+      </div>
+
+      <div id="status" class="status loading" style="display: none;">
+        <div class="spinner"></div>
+        <span id="status-text">Loading usage data...</span>
+      </div>
+
+      <div id="data-section" style="display: none;">
+        <!-- Summary cards -->
+        <div class="summary-grid">
+          <div class="summary-item">
+            <div class="summary-label">Total Bandwidth</div>
+            <div><span class="summary-value" id="sum-bw">-</span><span class="summary-unit">TB</span></div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-label">Web Requests</div>
+            <div><span class="summary-value" id="sum-req">-</span></div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-label">Credits Consumed</div>
+            <div><span class="summary-value" id="sum-credits">-</span></div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-label">Credits Remaining</div>
+            <div><span class="summary-value" id="sum-remaining">-</span></div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-label">Invoiced</div>
+            <div><span class="summary-value" id="sum-usd">-</span></div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-label">Billable Members</div>
+            <div><span class="summary-value" id="sum-members">-</span></div>
+          </div>
+        </div>
+
+        <!-- Freshness / coverage strip -->
+        <div class="meta-strip" id="meta-strip"></div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="overview">Overview</button>
+          <button class="tab-btn" data-tab="periods">Periods</button>
+          <button class="tab-btn" data-tab="accounts">Accounts</button>
+          <button class="tab-btn" data-tab="sites">Sites</button>
+          <button class="tab-btn" data-tab="groups">Cost Groups</button>
+          <button class="tab-btn" data-tab="geo">Geo</button>
+          <button class="tab-btn" data-tab="functions">Functions</button>
+          <button class="tab-btn" data-tab="members">Members</button>
+          <button class="tab-btn" data-tab="credits">Credits</button>
+          <button class="tab-btn" data-tab="allocation">Allocation</button>
+          <button class="tab-btn" data-tab="json">JSON</button>
+          <button class="tab-btn" data-tab="docs">Docs</button>
+        </div>
+
+        <!-- Overview -->
+        <div id="tab-overview" class="tab-content active">
+          <div class="chart-row">
+            <div class="chart-card wide">
+              <h3>Bandwidth Over Time (TB)</h3>
+              <div class="chart-container tall"><canvas id="chart-bw-trend"></canvas></div>
+            </div>
+            <div class="chart-card">
+              <h3>Credits by Category</h3>
+              <div class="chart-stat">
+                <div class="chart-stat-value" id="chart-total-credits">-</div>
+                <div class="chart-stat-label">Credits Consumed</div>
+              </div>
+              <div class="chart-container short"><canvas id="chart-credits-cat"></canvas></div>
+            </div>
+          </div>
+          <div class="chart-row">
+            <div class="chart-card wide">
+              <h3>Web Requests Over Time</h3>
+              <div class="chart-container tall"><canvas id="chart-req-trend"></canvas></div>
+            </div>
+            <div class="chart-card">
+              <h3>Bandwidth by Account (TB)</h3>
+              <div class="chart-container tall"><canvas id="chart-accounts"></canvas></div>
+            </div>
+          </div>
+          <div class="chart-grid">
+            <div class="chart-card">
+              <h3>Top 10 Sites by Bandwidth (TB)</h3>
+              <div class="chart-container tall"><canvas id="chart-top-sites"></canvas></div>
+            </div>
+            <div class="chart-card">
+              <h3>Bandwidth by Cost Group (TB)</h3>
+              <div class="chart-container tall"><canvas id="chart-groups"></canvas></div>
+            </div>
+          </div>
+          <div class="chart-grid">
+            <div class="chart-card">
+              <h3>Bandwidth by Country (GB)</h3>
+              <div class="chart-container tall"><canvas id="chart-geo-country"></canvas></div>
+            </div>
+            <div class="chart-card">
+              <h3>Bandwidth by CDN Region (GB)</h3>
+              <div class="chart-container tall"><canvas id="chart-geo-region"></canvas></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Periods -->
+        <div id="tab-periods" class="tab-content">
+          <div class="card">
+            <h2>Usage by Period <span class="source-tag">usage.by_period</span></h2>
+            <div class="table-container">
+              <table class="data-table" id="periods-table">
+                <thead><tr><th>Period</th><th class="number">Bandwidth (TB)</th><th class="number">Web Requests</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Accounts -->
+        <div id="tab-accounts" class="tab-content">
+          <div class="card">
+            <h2>Usage by Account <span class="source-tag">usage.by_account</span></h2>
+            <div class="table-container">
+              <table class="data-table" id="accounts-table">
+                <thead><tr><th>Account</th><th>Account ID</th><th class="number">Bandwidth (TB)</th><th class="number">Web Requests</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sites -->
+        <div id="tab-sites" class="tab-content">
+          <div class="card">
+            <h2>Top Sites by Bandwidth <span class="source-tag">usage.by_site</span><span class="row-count" id="sites-count"></span></h2>
+            <p class="section-note">The API returns the top 25 sites over the selected range. Use the Allocation tab or the CSV export for the full per-host detail.</p>
+            <div class="table-container">
+              <table class="data-table" id="sites-table">
+                <thead><tr><th>Host</th><th>Account</th><th>Accounting</th><th>Owner</th><th class="number">Bandwidth (TB)</th><th class="number">Web Requests</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cost groups -->
+        <div id="tab-groups" class="tab-content">
+          <div class="grid-2">
+            <div class="card">
+              <h2>By Accounting Label <span class="source-tag">usage.by_accounting</span></h2>
+              <div class="table-container">
+                <table class="data-table" id="accounting-table">
+                  <thead><tr><th>Accounting</th><th class="number">Sites</th><th class="number">Bandwidth (TB)</th><th class="number">Web Requests</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="card">
+              <h2>By Owner Label <span class="source-tag">usage.by_owner</span></h2>
+              <div class="table-container">
+                <table class="data-table" id="owner-table">
+                  <thead><tr><th>Owner</th><th class="number">Sites</th><th class="number">Bandwidth (TB)</th><th class="number">Web Requests</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Geo -->
+        <div id="tab-geo" class="tab-content">
+          <p class="section-note" id="geo-note"></p>
+          <div class="grid-2">
+            <div class="card">
+              <h2>By Country <span class="source-tag">geo.by_country</span></h2>
+              <div class="table-container">
+                <table class="data-table" id="geo-country-table">
+                  <thead><tr><th>Country</th><th class="number">Bandwidth (GB)</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="card">
+              <h2>By CDN Region <span class="source-tag">geo.by_server_region</span></h2>
+              <div class="table-container">
+                <table class="data-table" id="geo-region-table">
+                  <thead><tr><th>CDN Region</th><th class="number">Bandwidth (GB)</th><th class="number">Requests</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Functions -->
+        <div id="tab-functions" class="tab-content">
+          <p class="section-note" id="fn-note"></p>
+          <div class="grid-2">
+            <div class="card">
+              <h2>Serverless Functions <span class="source-tag">functions.serverless</span></h2>
+              <div class="table-container">
+                <table class="data-table" id="fn-table">
+                  <thead><tr><th>Function</th><th class="number">Invocations</th><th class="number">Avg (ms)</th><th class="number">p95 (ms)</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="card">
+              <h2>Edge Functions <span class="source-tag">functions.edge</span></h2>
+              <div class="table-container">
+                <table class="data-table" id="edge-table">
+                  <thead><tr><th>Function</th><th class="number">Invocations</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Members -->
+        <div id="tab-members" class="tab-content">
+          <div class="grid-2">
+            <div class="card">
+              <h2>Members by Role <span class="source-tag">members.by_role</span></h2>
+              <div class="table-container">
+                <table class="data-table" id="members-table">
+                  <thead><tr><th>Role</th><th class="number">Count</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="card">
+              <h2>Totals <span class="source-tag">members</span></h2>
+              <div class="table-container">
+                <table class="data-table" id="members-totals-table">
+                  <thead><tr><th>Metric</th><th class="number">Count</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Credits -->
+        <div id="tab-credits" class="tab-content">
+          <div id="credits-missing" class="section-note" style="display:none">No credit data was returned for this range (the billing source may be unavailable, check meta.warnings).</div>
+          <div class="grid-2">
+            <div class="card">
+              <h2>Included vs Overage <span class="source-tag">credits.included_vs_overage</span></h2>
+              <div class="table-container">
+                <table class="data-table" id="credits-summary-table">
+                  <thead><tr><th>Metric</th><th class="number">Value</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="card">
+              <h2>Credits by Category <span class="source-tag">credits.by_category</span></h2>
+              <div class="table-container">
+                <table class="data-table" id="credits-cat-table">
+                  <thead><tr><th>Category</th><th class="number">Credits</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <h2>Contracted Rate Card <span class="source-tag">credits.rate_card</span></h2>
+            <div class="table-container">
+              <table class="data-table" id="rate-card-table">
+                <thead><tr><th>Meter</th><th class="number">Rate (credits)</th><th>Per Unit</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Allocation -->
+        <div id="tab-allocation" class="tab-content">
+          <div class="card">
+            <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
+              <h2 style="margin-bottom:0;">Cost Allocation <span class="source-tag">/api/allocation</span></h2>
+              <button id="allocation-load" class="secondary">Load allocation for this range</button>
+              <button id="allocation-csv" class="secondary">Download CSV</button>
+              <span class="row-count" id="allocation-count"></span>
+            </div>
+            <p class="section-note">Month x host x country x product feature, with credits derived from usage at your contracted rates. Credits that cannot be attributed to a host (compute, deploys, forms, AI) appear in the reconciliation as an unallocated remainder, not spread across hosts. Dollars are blended (share of credits x invoiced USD), not line-item prices. Allocation months are capped at 24 per request.</p>
+            <div id="allocation-status" class="status loading" style="display:none;"><div class="spinner"></div><span id="allocation-status-text"></span></div>
+            <h3 style="font-size:14px; margin: 12px 0 8px; color: var(--accent);">Reconciliation by month</h3>
+            <div class="table-container" style="max-height:260px;">
+              <table class="data-table" id="reconciliation-table">
+                <thead><tr>
+                  <th>Month</th>
+                  <th class="number">Consumed</th>
+                  <th class="number">Allocated</th>
+                  <th class="number">Bandwidth Cr</th>
+                  <th class="number">Request Cr</th>
+                  <th class="number">Unallocated</th>
+                  <th class="number">Invoiced USD</th>
+                  <th>Flags</th>
+                </tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <h3 style="font-size:14px; margin: 16px 0 8px; color: var(--accent);">Driver rows</h3>
+            <div class="table-container">
+              <table class="data-table" id="allocation-table">
+                <thead><tr>
+                  <th>Month</th><th>Host</th><th>Customer</th><th>Country</th><th>Feature</th>
+                  <th class="number">Bandwidth (GB)</th><th class="number">Requests</th><th class="number">Credits</th><th class="number">USD</th>
+                </tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- JSON -->
+        <div id="tab-json" class="tab-content">
+          <div class="card">
+            <h2>Raw API Response</h2>
+            <textarea class="json-output" id="json-output" readonly></textarea>
+          </div>
+        </div>
+
+        <!-- Docs -->
+        <div id="tab-docs" class="tab-content">
+          <div class="card">
+            <h2>API Quick Reference</h2>
+            <div class="doc-section">
+              <h3>Authentication</h3>
+              <p>Direct calls to the usage API use <code>Authorization: Bearer &lt;CUSTOMER_API_KEY&gt;</code>. This dashboard never sees that key: the browser calls <code>/api/*</code> on this site and a server-side proxy attaches it. If the dashboard operator set a <code>DASHBOARD_ACCESS_KEY</code>, enter it in the field above; it is sent as a bearer token to the proxy only.</p>
+            </div>
+            <div class="doc-section">
+              <h3>GET /v1/usage?start=YYYY-MM-DD&amp;end=YYYY-MM-DD&amp;granularity=month|day</h3>
+              <p><code>start</code> is inclusive, <code>end</code> is exclusive. Max span about 5 years. Returns usage by period / account / site / accounting / owner, members, geo, functions, credits, all wrapped in a <code>meta</code> envelope.</p>
+              <div class="query-code">curl -s -H "Authorization: Bearer $CUSTOMER_API_KEY" \
+  "$USAGE_API_URL/v1/usage?start=2026-01-01&amp;end=2026-07-01&amp;granularity=month"</div>
+            </div>
+            <div class="doc-section">
+              <h3>GET /v1/allocation?start=&amp;end=&amp;format=csv|json</h3>
+              <p>The Finance driver table: month x host x country x product feature with usage, credits and blended dollars. CSV by default. Read the reconciliation block before trusting a total: unattributable credits are reported as a remainder, never spread.</p>
+              <div class="query-code">curl -s -H "Authorization: Bearer $CUSTOMER_API_KEY" \
+  "$USAGE_API_URL/v1/allocation?start=2026-01-01&amp;end=2026-07-01" -o allocation.csv</div>
+            </div>
+            <div class="doc-section">
+              <h3>Reading meta</h3>
+              <ul>
+                <li><code>meta.coverage</code> shows the seam between live sources (last ~90 days) and stored monthly snapshots. Anything outside both is absent, not zero.</li>
+                <li><code>meta.freshness</code>: credits lag about 48 hours; the current period is always provisional.</li>
+                <li><code>meta.warnings</code> lists sections that degraded (a source failed, or history is not configured). A response with warnings still renders; the flagged sections may be empty.</li>
+                <li>Geo and per-function detail have 1 to 4 day source windows. For older ranges they come from daily snapshots that only accumulate going forward.</li>
+              </ul>
+            </div>
+            <div class="doc-section">
+              <h3>Also available</h3>
+              <ul>
+                <li><code>GET /v1/health</code>: liveness, no auth.</li>
+                <li><code>GET /report</code>: server-rendered HTML report over the same data (key entered in the form, useful without any tooling).</li>
+              </ul>
+              <p>Full documentation, including response schemas, lives in this project's README.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      'use strict';
+
+      const $ = (id) => document.getElementById(id);
+      const PALETTE = ['#05bdba', '#32e6e2', '#7b61ff', '#f2a20c', '#ff4655', '#4d9de0', '#9ee493', '#e26d5c', '#c77dff', '#f4d35e'];
+
+      Chart.defaults.color = '#8ba3ad';
+      Chart.defaults.borderColor = '#1e3a47';
+      Chart.defaults.font.family = "'Inter', sans-serif";
+
+      const charts = {};
+      let currentData = null;
+      let currentRange = null;
+
+      const fmt = (n) => (n ?? 0).toLocaleString('en-US');
+      const fmt2 = (n) => (n ?? 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
+      const fmtCompact = (n) => (n ?? 0).toLocaleString('en-US', { notation: 'compact', maximumFractionDigits: 1 });
+      const fmtUsd = (n) => (n ?? 0).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+      const periodLabel = (p, granularity) => String(p).slice(0, granularity === 'day' ? 10 : 7);
+      const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+      // ---- range controls -------------------------------------------------------------
+      function isoDate(d) { return d.toISOString().slice(0, 10); }
+
+      function computeRange() {
+        const preset = $('preset').value;
+        const now = new Date();
+        // end is exclusive: use tomorrow so today's provisional data is included.
+        const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+        if (preset === 'custom') {
+          return { start: $('start').value, end: $('end').value };
+        }
+        if (preset === 'ytd') {
+          return { start: `${now.getUTCFullYear()}-01-01`, end: isoDate(end) };
+        }
+        const months = Number(preset);
+        const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (months - 1), 1));
+        return { start: isoDate(start), end: isoDate(end) };
+      }
+
+      $('preset').addEventListener('change', () => {
+        const custom = $('preset').value === 'custom';
+        $('start').style.display = custom ? '' : 'none';
+        $('end').style.display = custom ? '' : 'none';
+      });
+
+      // ---- fetch ----------------------------------------------------------------------
+      function authHeaders() {
+        const key = $('access-key').value.trim() || sessionStorage.getItem('dashboard_key') || '';
+        return key ? { authorization: `Bearer ${key}` } : {};
+      }
+
+      async function apiFetch(path) {
+        const res = await fetch(path, { headers: authHeaders() });
+        if (!res.ok) {
+          let message = `HTTP ${res.status}`;
+          try {
+            const body = await res.json();
+            if (body?.error?.code === 'dashboard_key_required') {
+              message = 'This dashboard requires an access key. Enter it in the field above and reload.';
+            } else if (body?.error?.message) {
+              message = `${message}: ${body.error.message}` + (body.error.details ? ` (${JSON.stringify(body.error.details)})` : '');
+            } else if (body?.status === 'unavailable') {
+              message = `Allocation unavailable: history store is ${body.reason}`;
+            }
+          } catch { /* non-JSON error body */ }
+          throw new Error(message);
+        }
+        return res;
+      }
+
+      // ---- load + render --------------------------------------------------------------
+      async function loadData() {
+        const range = computeRange();
+        if (!range.start || !range.end) { showError('Pick both start and end dates.'); return; }
+        currentRange = range;
+        const granularity = $('granularity').value;
+        const qs = `start=${range.start}&end=${range.end}&granularity=${granularity}`;
+        $('api-href').href = `/api/usage?${qs}`;
+
+        const key = $('access-key').value.trim();
+        if (key) sessionStorage.setItem('dashboard_key', key);
+
+        $('status').style.display = 'flex';
+        $('status').className = 'status loading';
+        $('status-text').textContent = 'Loading usage data...';
+        $('load-btn').disabled = true;
+
+        try {
+          const res = await apiFetch(`/api/usage?${qs}`);
+          currentData = await res.json();
+          $('status').style.display = 'none';
+          $('data-section').style.display = 'block';
+          renderAll(currentData, granularity);
+        } catch (e) {
+          showError(e.message);
+        } finally {
+          $('load-btn').disabled = false;
+        }
+      }
+
+      function showError(message) {
+        $('status').style.display = 'flex';
+        $('status').className = 'status error';
+        $('status-text').textContent = message;
+      }
+
+      function renderAll(data, granularity) {
+        renderSummary(data);
+        renderMeta(data.meta);
+        renderCharts(data, granularity);
+        renderTables(data, granularity);
+        $('json-output').value = JSON.stringify(data, null, 2);
+        // Allocation is loaded on demand (it is a heavier store read).
+        $('allocation-table').querySelector('tbody').innerHTML = '';
+        $('reconciliation-table').querySelector('tbody').innerHTML = '';
+        $('allocation-count').textContent = '';
+      }
+
+      function renderSummary(data) {
+        const u = data.usage ?? {};
+        const totBw = (u.by_period ?? []).reduce((s, r) => s + (r.bandwidth_tb ?? 0), 0);
+        const totReq = (u.by_period ?? []).reduce((s, r) => s + (r.web_requests ?? 0), 0);
+        $('sum-bw').textContent = fmt2(totBw);
+        $('sum-req').textContent = fmtCompact(totReq);
+        const c = data.credits;
+        $('sum-credits').textContent = c ? fmtCompact(c.consumed) : 'n/a';
+        $('sum-remaining').textContent = c ? fmtCompact(c.included_vs_overage?.remaining) : 'n/a';
+        $('sum-usd').textContent = c ? fmtUsd(c.invoiced_usd) : 'n/a';
+        $('sum-members').textContent = fmt(data.members?.billable);
+      }
+
+      function renderMeta(meta) {
+        const strip = $('meta-strip');
+        strip.innerHTML = '';
+        if (!meta) return;
+        const chips = [];
+        const cov = meta.coverage ?? {};
+        if (cov.live) chips.push({ text: `live ${cov.live.start} to ${cov.live.end}`, cls: 'ok' });
+        if (cov.history) chips.push({ text: `snapshots ${cov.history.start} to ${cov.history.end}`, cls: 'ok' });
+        chips.push({ text: `store: ${cov.store ?? 'none'}`, cls: '' });
+        if (meta.freshness?.current_period_provisional) chips.push({ text: 'current period provisional', cls: '' });
+        if (meta.freshness?.credits_lag_hours) chips.push({ text: `credits lag ~${meta.freshness.credits_lag_hours}h`, cls: '' });
+        for (const w of meta.warnings ?? []) chips.push({ text: `warning: ${w}`, cls: 'warn' });
+        for (const ch of chips) {
+          const el = document.createElement('span');
+          el.className = `chip ${ch.cls}`.trim();
+          el.textContent = ch.text;
+          strip.appendChild(el);
+        }
+        const gen = document.createElement('span');
+        gen.textContent = `generated ${meta.generated_at ?? ''}`;
+        strip.appendChild(gen);
+      }
+
+      // ---- charts ---------------------------------------------------------------------
+      function mkChart(id, cfg) {
+        if (charts[id]) charts[id].destroy();
+        charts[id] = new Chart($(id), cfg);
+      }
+
+      const hbarOpts = {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { x: { grid: { color: '#1e3a47' } }, y: { grid: { display: false } } },
+      };
+
+      function renderCharts(data, granularity) {
+        const u = data.usage ?? {};
+        const periods = u.by_period ?? [];
+        const labels = periods.map((r) => periodLabel(r.period, granularity));
+
+        mkChart('chart-bw-trend', {
+          type: 'bar',
+          data: { labels, datasets: [{ label: 'TB', data: periods.map((r) => r.bandwidth_tb), backgroundColor: '#05bdba', borderRadius: 4 }] },
+          options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, grid: { color: '#1e3a47' } }, x: { grid: { display: false } } } },
+        });
+
+        mkChart('chart-req-trend', {
+          type: 'line',
+          data: { labels, datasets: [{ label: 'Requests', data: periods.map((r) => r.web_requests), borderColor: '#32e6e2', backgroundColor: 'rgba(50,230,226,0.15)', fill: true, tension: 0.3, pointRadius: 3 }] },
+          options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, grid: { color: '#1e3a47' }, ticks: { callback: (v) => fmtCompact(v) } }, x: { grid: { display: false } } } },
+        });
+
+        const accounts = (u.by_account ?? []).slice(0, 10);
+        mkChart('chart-accounts', {
+          type: 'bar',
+          data: { labels: accounts.map((r) => r.account_slug ?? r.account_id.slice(0, 8)), datasets: [{ data: accounts.map((r) => r.bandwidth_tb), backgroundColor: PALETTE, borderRadius: 4 }] },
+          options: hbarOpts,
+        });
+
+        const sites = (u.by_site ?? []).slice(0, 10);
+        mkChart('chart-top-sites', {
+          type: 'bar',
+          data: { labels: sites.map((r) => r.host ?? '(no host)'), datasets: [{ data: sites.map((r) => r.bandwidth_tb), backgroundColor: '#05bdba', borderRadius: 4 }] },
+          options: hbarOpts,
+        });
+
+        const groups = (u.by_accounting ?? []).slice(0, 10);
+        mkChart('chart-groups', {
+          type: 'bar',
+          data: { labels: groups.map((r) => r.key), datasets: [{ data: groups.map((r) => r.bandwidth_tb), backgroundColor: '#7b61ff', borderRadius: 4 }] },
+          options: hbarOpts,
+        });
+
+        const countries = (data.geo?.by_country ?? []).slice(0, 12);
+        mkChart('chart-geo-country', {
+          type: 'bar',
+          data: { labels: countries.map((r) => r.country), datasets: [{ data: countries.map((r) => r.bandwidth_gb), backgroundColor: '#4d9de0', borderRadius: 4 }] },
+          options: hbarOpts,
+        });
+
+        const regions = (data.geo?.by_server_region ?? []).slice(0, 12);
+        mkChart('chart-geo-region', {
+          type: 'bar',
+          data: { labels: regions.map((r) => r.cdn_region), datasets: [{ data: regions.map((r) => r.bandwidth_gb), backgroundColor: '#f2a20c', borderRadius: 4 }] },
+          options: hbarOpts,
+        });
+
+        const cats = data.credits?.by_category ?? [];
+        $('chart-total-credits').textContent = data.credits ? fmtCompact(data.credits.consumed) : 'n/a';
+        mkChart('chart-credits-cat', {
+          type: 'doughnut',
+          data: { labels: cats.map((r) => r.category), datasets: [{ data: cats.map((r) => r.credits), backgroundColor: PALETTE, borderWidth: 0 }] },
+          options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 10 } } } } },
+        });
+      }
+
+      // ---- tables ---------------------------------------------------------------------
+      function fillTable(id, rows, mkCells) {
+        const tbody = $(id).querySelector('tbody');
+        tbody.innerHTML = rows.map((r) => `<tr>${mkCells(r)}</tr>`).join('');
+      }
+
+      function renderTables(data, granularity) {
+        const u = data.usage ?? {};
+
+        fillTable('periods-table', u.by_period ?? [], (r) =>
+          `<td>${esc(periodLabel(r.period, granularity))}</td><td class="number">${fmt2(r.bandwidth_tb)}</td><td class="number">${fmt(r.web_requests)}</td>`);
+
+        fillTable('accounts-table', u.by_account ?? [], (r) =>
+          `<td>${esc(r.account_slug ?? '')}</td><td>${esc(r.account_id)}</td><td class="number">${fmt2(r.bandwidth_tb)}</td><td class="number">${fmt(r.web_requests)}</td>`);
+
+        const sites = u.by_site ?? [];
+        $('sites-count').textContent = `${sites.length} rows`;
+        fillTable('sites-table', sites, (r) =>
+          `<td>${esc(r.host ?? '(no host)')}</td><td>${esc(r.account_id)}</td><td>${esc(r.accounting ?? '')}</td><td>${esc(r.owner ?? '')}</td><td class="number">${fmt2(r.bandwidth_tb)}</td><td class="number">${fmt(r.web_requests)}</td>`);
+
+        fillTable('accounting-table', u.by_accounting ?? [], (r) =>
+          `<td>${esc(r.key)}</td><td class="number">${fmt(r.sites)}</td><td class="number">${fmt2(r.bandwidth_tb)}</td><td class="number">${fmt(r.web_requests)}</td>`);
+        fillTable('owner-table', u.by_owner ?? [], (r) =>
+          `<td>${esc(r.key)}</td><td class="number">${fmt(r.sites)}</td><td class="number">${fmt2(r.bandwidth_tb)}</td><td class="number">${fmt(r.web_requests)}</td>`);
+
+        $('geo-note').textContent = data.geo?.note ?? '';
+        fillTable('geo-country-table', data.geo?.by_country ?? [], (r) =>
+          `<td>${esc(r.country)}</td><td class="number">${fmt2(r.bandwidth_gb)}</td>`);
+        fillTable('geo-region-table', data.geo?.by_server_region ?? [], (r) =>
+          `<td>${esc(r.cdn_region)}</td><td class="number">${fmt2(r.bandwidth_gb)}</td><td class="number">${fmt(r.requests)}</td>`);
+
+        $('fn-note').textContent = data.functions?.note ?? '';
+        fillTable('fn-table', data.functions?.serverless ?? [], (r) =>
+          `<td>${esc(r.name)}</td><td class="number">${fmt(r.invocations)}</td><td class="number">${fmt(r.avg_ms)}</td><td class="number">${fmt(r.p95_ms)}</td>`);
+        fillTable('edge-table', data.functions?.edge ?? [], (r) =>
+          `<td>${esc(r.name)}</td><td class="number">${fmt(r.invocations)}</td>`);
+
+        fillTable('members-table', data.members?.by_role ?? [], (r) =>
+          `<td>${esc(r.role)}</td><td class="number">${fmt(r.count)}</td>`);
+        fillTable('members-totals-table',
+          [{ k: 'Billable members', v: data.members?.billable }, { k: 'Git contributors', v: data.members?.git_contributors }],
+          (r) => `<td>${esc(r.k)}</td><td class="number">${fmt(r.v)}</td>`);
+
+        const c = data.credits;
+        $('credits-missing').style.display = c ? 'none' : 'block';
+        const iv = c?.included_vs_overage ?? {};
+        fillTable('credits-summary-table', c ? [
+          { k: 'Granted', v: fmt2(iv.granted) },
+          { k: 'Consumed', v: fmt2(iv.consumed) },
+          { k: 'Remaining', v: fmt2(iv.remaining) },
+          { k: 'Overage', v: fmt2(iv.overage) },
+          { k: 'Invoiced', v: fmtUsd(c.invoiced_usd) },
+        ] : [], (r) => `<td>${esc(r.k)}</td><td class="number">${esc(r.v)}</td>`);
+        fillTable('credits-cat-table', c?.by_category ?? [], (r) =>
+          `<td>${esc(r.category)}</td><td class="number">${fmt2(r.credits)}</td>`);
+        fillTable('rate-card-table', c?.rate_card ?? [], (r) =>
+          `<td>${esc(r.name)}</td><td class="number">${r.rate}</td><td>${esc(r.unit)}</td>`);
+      }
+
+      // ---- allocation -----------------------------------------------------------------
+      const MAX_ALLOCATION_ROWS = 1000;
+
+      async function loadAllocation() {
+        if (!currentRange) { return; }
+        const qs = `start=${currentRange.start}&end=${currentRange.end}&format=json`;
+        $('allocation-status').style.display = 'flex';
+        $('allocation-status').className = 'status loading';
+        $('allocation-status-text').textContent = 'Loading allocation (store reads per month, can take a moment)...';
+        try {
+          const res = await apiFetch(`/api/allocation?${qs}`);
+          const body = await res.json();
+          $('allocation-status').style.display = 'none';
+          renderAllocation(body);
+        } catch (e) {
+          $('allocation-status').className = 'status error';
+          $('allocation-status-text').textContent = e.message;
+        }
+      }
+
+      function renderAllocation(body) {
+        const rows = body.rows ?? [];
+        const recon = body.meta?.reconciliation ?? [];
+        fillTable('reconciliation-table', recon, (r) => {
+          const flags = [
+            ...(r.rates_fell_back_to?.length ? [`published rates: ${r.rates_fell_back_to.join(', ')}`] : []),
+            ...(r.location_unavailable ? ['location unavailable'] : []),
+          ].join('; ');
+          return `<td>${esc(r.month)}</td><td class="number">${fmt2(r.consumed_credits)}</td><td class="number">${fmt2(r.allocated_credits)}</td><td class="number">${fmt2(r.allocated_bandwidth_credits)}</td><td class="number">${fmt2(r.allocated_request_credits)}</td><td class="number">${fmt2(r.unallocated_credits)}</td><td class="number">${fmtUsd(r.invoiced_usd)}</td><td>${esc(flags)}</td>`;
+        });
+        const shown = rows.slice(0, MAX_ALLOCATION_ROWS);
+        $('allocation-count').textContent = rows.length > shown.length
+          ? `showing ${shown.length} of ${fmt(rows.length)} rows (download the CSV for all)`
+          : `${fmt(rows.length)} rows`;
+        fillTable('allocation-table', shown, (r) =>
+          `<td>${esc(r.month)}</td><td>${esc(r.host)}</td><td>${esc(r.customer)}</td><td>${esc(r.country)}</td><td>${esc(r.product_feature)}</td><td class="number">${fmt2(r.bandwidth_bytes / 1e9)}</td><td class="number">${fmt(r.web_requests)}</td><td class="number">${fmt2(r.credits)}</td><td class="number">${fmt2(r.usd)}</td>`);
+      }
+
+      async function downloadCsv() {
+        if (!currentRange) return;
+        const qs = `start=${currentRange.start}&end=${currentRange.end}&format=csv`;
+        try {
+          const res = await apiFetch(`/api/allocation?${qs}`);
+          const blob = await res.blob();
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = `netlify-allocation-${currentRange.start}-to-${currentRange.end}.csv`;
+          a.click();
+          URL.revokeObjectURL(a.href);
+        } catch (e) {
+          $('allocation-status').style.display = 'flex';
+          $('allocation-status').className = 'status error';
+          $('allocation-status-text').textContent = e.message;
+        }
+      }
+
+      // ---- tabs + wiring ----------------------------------------------------------------
+      document.querySelectorAll('.tab-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+          document.querySelectorAll('.tab-content').forEach((c) => c.classList.remove('active'));
+          btn.classList.add('active');
+          $(`tab-${btn.dataset.tab}`).classList.add('active');
+        });
+      });
+
+      $('load-btn').addEventListener('click', loadData);
+      $('allocation-load').addEventListener('click', loadAllocation);
+      $('allocation-csv').addEventListener('click', downloadCsv);
+      $('access-key').value = sessionStorage.getItem('dashboard_key') ?? '';
+
+      loadData();
+    </script>
+  </body>
+</html>

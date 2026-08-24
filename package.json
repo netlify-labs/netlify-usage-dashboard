@@ -1,0 +1,13 @@
+{
+  "name": "netlify-usage-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Customer dashboard and API client for the Netlify Usage API.",
+  "type": "module",
+  "scripts": {
+    "dev": "netlify dev"
+  },
+  "devDependencies": {
+    "@netlify/functions": "^6.0.0"
+  }
+}
