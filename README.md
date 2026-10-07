@@ -60,6 +60,7 @@ Authorization: Bearer <CUSTOMER_API_KEY>
 |---|---|---|---|
 | GET | `/v1/usage` | Bearer | All usage, members, geo, functions, and credits data (JSON) |
 | GET | `/v1/allocation` | Bearer | Finance driver table with per-host credits and dollars (CSV or JSON) |
+| POST | `/v1/backfill` | Bearer | Loads an explicit historical range into the store (operator action, see "How far back") |
 | GET | `/v1/health` | none | Liveness probe |
 | GET + POST | `/report` | key in form | Server-rendered HTML report, no tooling needed |
 
@@ -79,6 +80,7 @@ The main endpoint. One call returns everything the service knows for a date rang
 | `start` | yes | `YYYY-MM-DD` | Inclusive |
 | `end` | yes | `YYYY-MM-DD` | **Exclusive.** For "all of July" use `start=2026-07-01&end=2026-08-01` |
 | `granularity` | no | `month` (default) or `day` | Bucket size for the `by_period` series |
+| `sites` | no | `1`-`300`, or `all` | How many sites `usage.by_site` returns, ranked by bandwidth. **Defaults to 100**, so a tenant with more than that gets a truncated list unless you pass `sites=all` |
 
 Max span is about 5 years. Dates must be real calendar dates from 2020 onward.
 
@@ -106,12 +108,16 @@ curl -s \
   "members": {
     "by_role": [{ "role": "Developer", "count": 42 }],
     "billable": 55,
-    "git_contributors": 61
+    "git_contributors": 61,
+    "by_account": [{ "account_id": "61f9...", "billable": 36,
+                     "git_contributors": 11, "by_role": { "developer": 32 } }]
   },
   "geo": {
     "note": "full requested range, from daily snapshots",
     "by_country":       [{ "country": "US", "bandwidth_gb": 812.4 }],
-    "by_server_region": [{ "cdn_region": "us-east-1", "bandwidth_gb": 500.1, "requests": 123456 }]
+    "by_server_region": [{ "cdn_region": "us-east-1", "bandwidth_gb": 500.1, "requests": 123456 }],
+    "by_site_server_region": [{ "site_id": "a1b2...", "cdn_region": "us-east-1",
+                                "bandwidth_gb": 120.5, "requests": 45678 }]
   },
   "functions": {
     "note": "full requested range, from daily snapshots (p95 is the worst day in range - percentiles do not sum)",
@@ -131,12 +137,24 @@ curl -s \
 
 Field notes:
 
-- `usage.by_site` is capped to the **top 25 sites** by bandwidth over the range. For the
-  full per-host detail use `/v1/allocation`.
+- `usage.by_site` returns the **top 100 sites** by bandwidth unless you pass `sites=all`
+  (max 300). `by_site_total` and `by_site_truncated` in the response tell you whether you
+  are looking at a complete list — check them before reconciling totals.
 - `usage.by_accounting` and `usage.by_owner` group sites by the `accounting:` and `owner:`
   labels set on each site in Netlify. Unlabeled sites roll up under `(unlabeled)`; keeping
   labels current is what makes these views (and cost allocation) useful.
 - `members` is a point-in-time count (the latest within the range), not a time series.
+- `members.by_account` breaks seats down per account — the grain you need to allocate seat
+  cost. It is `null`, not `[]`, when the range predates the snapshot store: "we did not
+  capture this" and "there were no seats" are different claims and must not look alike.
+- `geo.by_site_server_region` is which edge regions served each host. It is **capture-or-lose**
+  from a 1-2 day source, so it exists only from the day the service started writing it, and
+  is `null` for anything earlier. There is no way to backfill it.
+- **Per-member rows are not available.** No person-level membership data exists in any
+  upstream source; it would need Netlify's core API and a token this service does not hold.
+- **Edge-function invocations read zero.** The upstream table has returned no rows for any
+  account since edge delivery moved off Deno. This is a platform-side gap, not a scoping
+  problem with your key — `functions.serverless` is unaffected.
 - `geo` and `functions` carry a `note` field telling you what window the data actually
   covers. Their upstream sources only retain 1 to 4 days, so historical coverage comes
   from daily snapshots that accumulate going forward from when the service was set up.
@@ -162,16 +180,24 @@ Every `/v1/usage` response is wrapped in an envelope that makes data provenance 
     "store": "netlify-db",
     "history": { "start": "2026-01-01", "end": "2026-05-01" },
     "live":    { "start": "2026-05-01", "end": "2026-07-01" },
-    "source_cutoff": "2026-05-01"
+    "source_cutoff": "2026-05-01",
+    "billing_grain": "daily"
   },
   "sources": { "usage": "clickhouse", "credits": "orb", "history": "netlify-db (neon)" },
   "warnings": ["credits.served_from_history"]
 }
 ```
 
-- **`coverage`**: live sources retain roughly the last 90 days; everything older is served
-  from monthly snapshots kept for you indefinitely. `history` and `live` show exactly
-  where the seam fell. The two halves never overlap and never leave a gap.
+- **`coverage`**: `history` and `live` show exactly where the seam between the snapshot
+  store and the live warehouse fell. The two halves never overlap and never leave a gap.
+- **`coverage.billing_grain`** tells you how precise the stored half is, and it changes what
+  a partial month means:
+  - `daily` — the store answered day-exact and only the current day came from live sources.
+    A range ending mid-month returns exactly that range.
+  - `monthly` — the store answered in whole months, so a range starting mid-month is rounded
+    back to the 1st (`warnings` will contain `history.partial_month_rounded`), and the
+    trailing ~90-120 days came from live sources. This is what you get for a range reaching
+    further back than the per-day tables go.
 - **`freshness`**: usage is near real time; **credits lag about 48 hours**; the current
   billing period is always provisional and will move until it closes.
 - **`warnings`**: sections that degraded. The response still succeeds; the named section
@@ -179,6 +205,36 @@ Every `/v1/usage` response is wrapped in an envelope that makes data provenance 
   answer), `credits.served_from_history`, `history.not_configured`, and section labels
   like `usage.by_period` or `geo.by_country` when a live source failed. An empty section
   with a warning means "unavailable", not "zero".
+
+### Which endpoint answers which question
+
+The two data endpoints serve different grains on purpose, so a column missing from one is
+often present in the other. The most common confusion first:
+
+| You want | Ask | Why |
+|---|---|---|
+| Usage by **host x country** | **`/v1/allocation`** | `/v1/usage` has no site x country dimension. If you have concluded that location data is unavailable, this is almost certainly why |
+| Usage by period, account or site | `/v1/usage` | `granularity=day` for day-exact buckets |
+| Usage by host x **serving region** | `/v1/usage` -> `geo.by_site_server_region` | Forward-only; see the field notes |
+| Seats **per account** | `/v1/usage` -> `members.by_account` | `members.by_role` is the org-wide rollup of the same data |
+| Cost per host per month | `/v1/allocation` | Credits and blended dollars |
+
+### How far back the history actually goes
+
+Every grain is capped by its upstream source's retention, not by the API. A request reaching
+past these returns nothing for that grain rather than an error:
+
+| Grain | Source retention | Backfillable? |
+|---|---|---|
+| Bandwidth, requests, builds, forms, images | ~93 days | Yes, to ~93 days |
+| Seats by role | ~687 days | Yes |
+| Billable seats, git contributors | ~94 days | Yes |
+| Geo, serving region, per-function, concurrency | **1-4 days** | **No — forward only** |
+
+Everything captured is then kept indefinitely in the snapshot store. So history deepens from
+the day the service was set up for you; it cannot be reconstructed backwards beyond the
+windows above. `POST /v1/backfill` loads what is still reachable, and is an operator action
+rather than something to call on a schedule.
 
 ### GET /v1/allocation
 
